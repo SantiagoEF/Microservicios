@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Práctica de Microservicios</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --text:#1d2330; --muted:#6b7280; --line:#e3e6ec; --accent:#2563eb; --ok:#16a34a; --bad:#dc2626; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12151c; --card:#1b1f2a; --text:#e8eaf0; --muted:#9aa3b2; --line:#2b3140; --accent:#60a5fa; --ok:#4ade80; --bad:#f87171; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, Segoe UI, sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:20px 24px; border-bottom:1px solid var(--line); background:var(--card); }
+  header h1 { margin:0; font-size:20px; }
+  header p { margin:4px 0 0; color:var(--muted); font-size:14px; }
+  main { max-width:1000px; margin:0 auto; padding:20px; display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; }
+  section.wide { grid-column:1 / -1; }
+  h2 { margin:0 0 12px; font-size:16px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:600; }
+  .estado { display:flex; gap:10px; flex-wrap:wrap; }
+  .pill { padding:6px 12px; border-radius:999px; font-size:13px; border:1px solid var(--line); }
+  .pill.ok { color:var(--ok); border-color:var(--ok); }
+  .pill.bad { color:var(--bad); border-color:var(--bad); }
+  label { display:block; font-size:13px; color:var(--muted); margin:8px 0 4px; }
+  select, input { width:100%; padding:8px; border-radius:6px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:14px; }
+  button { margin-top:12px; padding:9px 16px; border:0; border-radius:6px; background:var(--accent); color:#fff; font-size:14px; cursor:pointer; }
+  button.sec { background:transparent; color:var(--accent); border:1px solid var(--accent); margin-top:0; }
+  #mensaje { margin-top:10px; font-size:14px; min-height:20px; }
+  .ok-t { color:var(--ok); } .bad-t { color:var(--bad); }
+  .vacio { color:var(--muted); font-size:14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Práctica de Microservicios</h1>
+  <p>Todo pasa por el API Gateway en el puerto 8000</p>
+</header>
+<main>
+  <section class="wide">
+    <h2>Estado de los servicios</h2>
+    <div class="estado" id="estado"></div>
+    <button class="sec" style="margin-top:12px" onclick="cargarTodo()">Actualizar</button>
+  </section>
+
+  <section>
+    <h2>Usuarios</h2>
+    <div id="usuarios"></div>
+    <label>Nombre</label><input id="u-nombre">
+    <label>Email</label><input id="u-email">
+    <button onclick="crearUsuario()">Crear usuario</button>
+  </section>
+
+  <section>
+    <h2>Productos</h2>
+    <div id="productos"></div>
+  </section>
+
+  <section>
+    <h2>Nuevo pedido</h2>
+    <label>Usuario</label><select id="p-usuario"></select>
+    <label>Producto</label><select id="p-producto"></select>
+    <label>Cantidad</label><input id="p-cantidad" type="number" min="1" value="1">
+    <button onclick="crearPedido()">Hacer pedido</button>
+    <div id="mensaje"></div>
+  </section>
+  <section>
+    <h2>Pedidos realizados</h2>
+    <div id="pedidos"></div>
+  </section>
+</main>
+
+<script>
+async function api(ruta, opciones) {
+  const r = await fetch('/api/' + ruta, opciones);
+  const datos = await r.json().catch(() => ({}));
+  return { ok: r.ok, status: r.status, datos };
+}
+
+function tabla(contenedor, columnas, filas) {
+  const el = document.getElementById(contenedor);
+  el.replaceChildren();
+  if (!filas.length) { el.innerHTML = '<p class="vacio">Sin datos</p>'; return; }
+  const t = document.createElement('table');
+  const cab = t.insertRow();
+  columnas.forEach(c => { const th = document.createElement('th'); th.textContent = c[1]; cab.appendChild(th); });
+  filas.forEach(f => {
+    const tr = t.insertRow();
+    columnas.forEach(c => { tr.insertCell().textContent = f[c[0]]; });
+  });
+  el.appendChild(t);
+}
+
+async function cargarEstado() {
+  const cont = document.getElementById('estado');
+  cont.replaceChildren();
+  try {
+    const r = await fetch('/health');
+    const datos = await r.json();
+    for (const [nombre, est] of Object.entries(datos)) {
+      const s = document.createElement('span');
+      s.className = 'pill ' + (est === 'ok' ? 'ok' : 'bad');
+      s.textContent = nombre + ': ' + est;
+      cont.appendChild(s);
+    }
+  } catch { cont.textContent = 'No se pudo contactar al gateway'; }
+}
+
+async function cargarUsuarios() {
+  const r = await api('usuarios');
+  if (!r.ok) { document.getElementById('usuarios').innerHTML = '<p class="bad-t">Servicio de usuarios no disponible</p>'; return; }
+  tabla('usuarios', [['id','ID'],['nombre','Nombre'],['email','Email']], r.datos);
+  const sel = document.getElementById('p-usuario');
+  sel.replaceChildren();
+  r.datos.forEach(u => sel.add(new Option(u.nombre, u.id)));
+}
+
+async function cargarProductos() {
+  const r = await api('productos');
+  if (!r.ok) { document.getElementById('productos').innerHTML = '<p class="bad-t">Servicio de productos no disponible</p>'; return; }
+  tabla('productos', [['id','ID'],['nombre','Producto'],['precio','Precio'],['stock','Stock']], r.datos);
+  const sel = document.getElementById('p-producto');
+  sel.replaceChildren();
+  r.datos.forEach(p => sel.add(new Option(p.nombre + ' ($' + p.precio + ')', p.id)));
+}
+
+async function cargarPedidos() {
+  const r = await api('pedidos');
+  if (!r.ok) { document.getElementById('pedidos').innerHTML = '<p class="bad-t">Servicio de pedidos no disponible</p>'; return; }
+  tabla('pedidos', [['id','ID'],['usuario','Usuario'],['producto','Producto'],['cantidad','Cant.'],['total','Total']], r.datos);
+}
+
+function cargarTodo() { cargarEstado(); cargarUsuarios(); cargarProductos(); cargarPedidos(); }
+
+function mostrar(texto, ok) {
+  const m = document.getElementById('mensaje');
+  m.textContent = texto;
+  m.className = ok ? 'ok-t' : 'bad-t';
+}
+
+async function crearUsuario() {
+  const nombre = document.getElementById('u-nombre').value.trim();
+  const email = document.getElementById('u-email').value.trim();
+  const r = await api('usuarios', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ nombre, email }) });
+  if (r.ok) { document.getElementById('u-nombre').value = ''; document.getElementById('u-email').value = ''; cargarUsuarios(); }
+  else alert(r.datos.error || 'Error al crear usuario');
+}
+
+async function crearPedido() {
+  const cuerpo = {
+    usuario_id: document.getElementById('p-usuario').value,
+    producto_id: document.getElementById('p-producto').value,
+    cantidad: document.getElementById('p-cantidad').value,
+  };
+  const r = await api('pedidos', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cuerpo) });
+  if (r.ok) mostrar('Pedido #' + r.datos.id + ' creado. Total: $' + r.datos.total, true);
+  else mostrar('Error ' + r.status + ': ' + (r.datos.error || 'desconocido'), false);
+  cargarProductos(); cargarPedidos(); cargarEstado();
+}
+
+cargarTodo();
+setInterval(cargarEstado, 5000);
+</script>
+</body>
+</html>
